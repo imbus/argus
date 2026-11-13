@@ -1,0 +1,17 @@
+# Strict: every parameter, return and attribute typed; explicit Any only for herdr's JSON.
+python-version = "3.12"
+project-includes = ["argus", "tests"]
+infer-with-first-use = false
+untyped-def-behavior = "check-and-infer-return-type"
+
+[errors]
+implicit-any = "error"
+unannotated-parameter = "error"
+unannotated-return = "error"
+unannotated-attribute = "error"
+implicitly-defined-attribute = "error"
+implicit-abstract-class = "error"
+missing-override-decorator = "error"
+unused-ignore = "error"
+redundant-cast = "error"
+deprecated = "error"

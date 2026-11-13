@@ -1,0 +1,57 @@
+id = "imbus.argus"
+name = "argus"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "hg status in the sidebar, and hg shares grouped under their repository"
+platforms = ["linux", "macos", "windows"]
+
+# herdr runs these in the plugin's folder, so `-m argus` finds the package.
+
+[[startup]]
+command = ["python3", "-m", "argus"]
+platforms = ["linux", "macos"]
+
+[[startup]]
+command = ["py", "-3", "-m", "argus"]
+platforms = ["windows"]
+
+[[events]]
+on = "workspace.created"
+command = ["python3", "-m", "argus"]
+platforms = ["linux", "macos"]
+
+[[events]]
+on = "workspace.created"
+command = ["py", "-3", "-m", "argus"]
+platforms = ["windows"]
+
+[[events]]
+on = "workspace.closed"
+command = ["python3", "-m", "argus"]
+platforms = ["linux", "macos"]
+
+[[events]]
+on = "workspace.closed"
+command = ["py", "-3", "-m", "argus"]
+platforms = ["windows"]
+
+[[events]]
+on = "workspace.focused"
+command = ["python3", "-m", "argus"]
+platforms = ["linux", "macos"]
+
+[[events]]
+on = "workspace.focused"
+command = ["py", "-3", "-m", "argus"]
+platforms = ["windows"]
+
+# agents edit files without running hg; their status settling is when the counts change
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "-m", "argus"]
+platforms = ["linux", "macos"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["py", "-3", "-m", "argus"]
+platforms = ["windows"]

@@ -1,0 +1,12 @@
+[tools]
+python = "3.12"            # minimum supported Python; tests and lint run on it
+"pypi:pyrefly" = "latest"  # type checker
+ruff = "latest"            # linter and import sorter
+
+[tasks.lint]
+description = "Lint (ruff) and type-check (strict pyrefly) the plugin and its tests"
+run = ["ruff check .", "pyrefly check"]
+
+[tasks.test]
+description = "Unit and integration tests (stdlib unittest; the hg tests need hg on PATH)"
+run = "python -m unittest discover -s tests -t ."

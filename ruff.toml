@@ -1,0 +1,20 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+  "E", "W",  # pycodestyle
+  "F",       # pyflakes: unused imports/variables, undefined names
+  "I",       # import order
+  "B",       # bugbear: likely bugs
+  "UP",      # pyupgrade: modern syntax for the target version
+  "SIM",     # simplifications
+  "C4",      # comprehensions
+  "PTH",     # pathlib over os.path
+  "RET",     # return statements
+  "PL",      # pylint
+  "RUF",     # ruff's own
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["PLR2004"]  # magic numbers are the expected values in tests
