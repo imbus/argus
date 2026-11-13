@@ -26,7 +26,8 @@ def main() -> int:
                           json_from_environment("HERDR_PLUGIN_CONTEXT_JSON"))
     if work.is_empty():  # most agent status changes; skip the lock and the queue
         return 0
-    lock = RefreshLock(state_directory())
+    state_dir = state_directory()
+    lock = RefreshLock(state_dir)
     herdr = Herdr(socket_path)
     config_dir = os.environ.get("HERDR_PLUGIN_CONFIG_DIR")
     symbols = load_symbols(Path(config_dir) if config_dir else None)
@@ -40,7 +41,7 @@ def main() -> int:
         try:
             next_work: Work | None = work
             while next_work is not None:
-                refresh_guarded(herdr, next_work, symbols)
+                refresh_guarded(herdr, next_work, symbols, state_dir / "labels.json")
                 next_work = lock.take_queued()
         finally:
             lock.release()
@@ -51,9 +52,9 @@ def main() -> int:
         work = leftover
 
 
-def refresh_guarded(herdr: Herdr, work: Work, symbols: Symbols) -> None:
+def refresh_guarded(herdr: Herdr, work: Work, symbols: Symbols, labels_file: Path) -> None:
     try:
-        refresh(herdr, work, symbols)
+        refresh(herdr, work, symbols, labels_file)
     except HerdrError as error:  # herdr unreachable or refusing; the next event tries again
         print(f"argus: refresh failed: {error}", file=sys.stderr)
 

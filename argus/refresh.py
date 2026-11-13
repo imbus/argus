@@ -1,6 +1,7 @@
 """What a herdr event asks argus to do, and doing it: regroup the sidebar, report hg status."""
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -47,8 +48,8 @@ def work_for_event(event: str | None, event_json: Mapping[str, Any],
             return Work(regroup=True, status_of_all=False, status_of=context_workspace)
         case "workspace.closed":
             return Work(regroup=True, status_of_all=False, status_of=frozenset())
-        case "workspace.focused":
-            return Work(regroup=False, status_of_all=False, status_of=context_workspace)
+        case "workspace.focused":  # herdr has no event for a changed folder; catch it here
+            return Work(regroup=True, status_of_all=False, status_of=context_workspace)
         case _:
             return NO_WORK
 
@@ -61,7 +62,7 @@ def work_when_agent_settles(event_json: Mapping[str, Any]) -> Work:
                 status_of=ids_present(data.get("workspace_id")))
 
 
-def refresh(herdr: Herdr, work: Work, symbols: Symbols) -> None:
+def refresh(herdr: Herdr, work: Work, symbols: Symbols, labels_file: Path) -> None:
     if work.is_empty():
         return
     workspaces = herdr.workspaces()
@@ -71,7 +72,9 @@ def refresh(herdr: Herdr, work: Work, symbols: Symbols) -> None:
     needed = all_ids if work.regroup else targets  # regrouping needs every checkout
     checkouts = {i: find_checkout(folders[i]) for i in needed if i in folders}
     if work.regroup:
-        regroup_guarded(herdr, workspaces, checkouts, symbols)
+        sidebar = [as_workspace(w.workspace_id, w.label, checkouts.get(w.workspace_id),
+                                folders.get(w.workspace_id)) for w in workspaces]
+        regroup_guarded(herdr, sidebar, symbols, labels_file)
     with ThreadPoolExecutor(max_workers=PARALLEL_HG_CALLS) as pool:
         for workspace_id in targets:
             pool.submit(report_status_guarded, herdr, workspace_id, checkouts.get(workspace_id),
@@ -90,24 +93,47 @@ def folder_per_workspace(panes: Sequence[Pane],
     return folders
 
 
-def regroup_guarded(herdr: Herdr, listed: Sequence[WorkspaceInfo],
-                    checkouts: Mapping[str, Checkout | None], symbols: Symbols) -> None:
-    workspaces = [as_workspace(w.workspace_id, w.label, checkouts.get(w.workspace_id))
-                  for w in listed]
+def regroup_guarded(herdr: Herdr, workspaces: Sequence[Workspace], symbols: Symbols,
+                    labels_file: Path) -> None:
+    set_by_argus = read_labels_guarded(labels_file)
     try:
-        for rename in renames(workspaces, symbols):
+        for rename in renames(workspaces, symbols, set_by_argus):
             herdr.rename(rename)
+            set_by_argus[rename.workspace_id] = rename.label
         # one failed move shifts every later index, so stop at the first failure
         for move in moves_to([w.workspace_id for w in workspaces], desired_order(workspaces)):
             herdr.move(move)
     except HerdrError as error:
         print(f"argus: regrouping stopped: {error}", file=sys.stderr)
+    open_ids = {w.workspace_id for w in workspaces}
+    write_labels_guarded(labels_file,
+                         {i: label for i, label in set_by_argus.items() if i in open_ids})
 
 
-def as_workspace(workspace_id: str, label: str, checkout: Checkout | None) -> Workspace:
+def as_workspace(workspace_id: str, label: str, checkout: Checkout | None,
+                 cwd: Path | None) -> Workspace:
+    cwd_name = cwd.name if cwd else None
     if checkout is None:
-        return Workspace(workspace_id, label, None, None)
-    return Workspace(workspace_id, label, checkout.root, checkout.source)
+        return Workspace(workspace_id, label, None, None, cwd_name)
+    return Workspace(workspace_id, label, checkout.root, checkout.source, cwd_name)
+
+
+def read_labels_guarded(labels_file: Path) -> dict[str, str]:
+    try:
+        stored: Any = json.loads(labels_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # none yet, or unreadable: argus only forgets what it named
+        return {}
+    if not isinstance(stored, dict):
+        return {}
+    return {str(i): label for i, label in stored.items() if isinstance(label, str)}
+
+
+def write_labels_guarded(labels_file: Path, labels: Mapping[str, str]) -> None:
+    try:
+        labels_file.parent.mkdir(parents=True, exist_ok=True)
+        labels_file.write_text(json.dumps(labels), encoding="utf-8")
+    except OSError as error:
+        print(f"argus: labels not saved: {error}", file=sys.stderr)
 
 
 def report_status_guarded(herdr: Herdr, workspace_id: str, checkout: Checkout | None,

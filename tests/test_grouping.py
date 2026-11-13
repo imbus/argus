@@ -86,37 +86,48 @@ class Marks(unittest.TestCase):
 class Labels(unittest.TestCase):
     def test_shares_are_named_after_their_folder_with_their_mark(self) -> None:
         sidebar = [source("m", MYREPO), share("b", "myrepo-b"), share("a", "myrepo-a")]
-        self.assertEqual(renames(sidebar, Symbols()),
+        self.assertEqual(renames(sidebar, Symbols(), {}),
                          [Rename("b", "└ myrepo-b"), Rename("a", "├ myrepo-a")])
 
     def test_the_previous_last_share_gets_a_tee_when_one_is_added_below_it(self) -> None:
         sidebar = [source("m", MYREPO), share("a", "myrepo-a", label="└ myrepo-a"),
                    share("b", "myrepo-b")]
-        self.assertEqual(renames(sidebar, Symbols()),
+        self.assertEqual(renames(sidebar, Symbols(), {}),
                          [Rename("a", "├ myrepo-a"), Rename("b", "└ myrepo-b")])
 
     def test_a_marked_share_gets_its_plain_name_back_when_its_source_closes(self) -> None:
-        self.assertEqual(renames([share("a", "myrepo-a", label="├ myrepo-a")], Symbols()),
+        self.assertEqual(renames([share("a", "myrepo-a", label="├ myrepo-a")], Symbols(), {}),
                          [Rename("a", "myrepo-a")])
 
     def test_configured_symbols_are_used_and_the_default_ones_still_recognised(self) -> None:
         sidebar = [source("m", MYREPO), share("a", "myrepo-a", label="└ myrepo-a")]
-        self.assertEqual(renames(sidebar, Symbols(tree_middle="┊", tree_last="╰")),
+        self.assertEqual(renames(sidebar, Symbols(tree_middle="┊", tree_last="╰"), {}),
                          [Rename("a", "╰ myrepo-a")])
 
     def test_a_label_the_user_chose_is_kept(self) -> None:
         sidebar = [source("m", MYREPO), share("a", "myrepo-a", label="my feature")]
-        self.assertEqual(renames(sidebar, Symbols()), [])
+        self.assertEqual(renames(sidebar, Symbols(), {}), [])
 
-    def test_a_marked_workspace_that_is_no_longer_a_share_loses_its_mark(self) -> None:
-        moved_away = Workspace("a", "├ myrepo-a", Path("/r/elsewhere"), None)
-        no_folder = Workspace("b", "└ myrepo-b", None, None)
-        self.assertEqual(renames([moved_away, no_folder], Symbols()),
-                         [Rename("a", "myrepo-a"), Rename("b", "myrepo-b")])
+    def test_a_marked_workspace_that_is_no_longer_a_share_gets_its_folder_name(self) -> None:
+        moved_away = Workspace("a", "├ myrepo-a", Path("/r/elsewhere"), None, "elsewhere")
+        not_hg = Workspace("b", "└ myrepo-b", None, None, "tmp")
+        self.assertEqual(renames([moved_away, not_hg], Symbols(), {}),
+                         [Rename("a", "elsewhere"), Rename("b", "tmp")])
+
+    def test_a_share_that_changed_folder_is_renamed_after_the_new_one(self) -> None:
+        sidebar = [source("m", MYREPO), share("a", "myrepo-b", label="└ myrepo-a")]
+        self.assertEqual(renames(sidebar, Symbols(), {}), [Rename("a", "└ myrepo-b")])
+
+    def test_a_plain_name_argus_gave_follows_the_folder(self) -> None:
+        # the share's source closed earlier, so argus took the mark off: herdr no longer follows
+        moved = share("a", "myrepo-b", label="myrepo-a")
+        self.assertEqual(renames([moved], Symbols(), {"a": "myrepo-a"}),
+                         [Rename("a", "myrepo-b")])
+        self.assertEqual(renames([moved], Symbols(), {}), [])
 
     def test_sources_and_plain_workspaces_are_never_renamed(self) -> None:
-        self.assertEqual(renames([source("m", MYREPO, label="whatever"), plain("x")], Symbols()),
-                         [])
+        sidebar = [source("m", MYREPO, label="whatever"), plain("x")]
+        self.assertEqual(renames(sidebar, Symbols(), {}), [])
 
 
 def random_sidebar(generator: random.Random) -> list[Workspace]:
@@ -148,10 +159,10 @@ class Properties(unittest.TestCase):
             grouped = [by_id[i] for i in desired_order(sidebar)]
             self.assertEqual(moves_to(ids(grouped), desired_order(grouped)), [], sidebar)
             self.assertEqual(share_marks(grouped, "├", "└"), share_marks(sidebar, "├", "└"))
-            labels = {r.workspace_id: r.label for r in renames(grouped, Symbols())}
+            labels = {r.workspace_id: r.label for r in renames(grouped, Symbols(), {})}
             relabelled = [Workspace(w.workspace_id, labels.get(w.workspace_id, w.label), w.folder,
                                     w.source) for w in grouped]
-            self.assertEqual(renames(relabelled, Symbols()), [], sidebar)
+            self.assertEqual(renames(relabelled, Symbols(), {}), [], sidebar)
 
     def test_every_workspace_appears_exactly_once(self) -> None:
         generator = random.Random(42)

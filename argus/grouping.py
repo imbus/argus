@@ -1,7 +1,7 @@
 """Where each workspace belongs in the sidebar and what it's called: pure, no herdr calls."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,8 +12,9 @@ from argus.settings import Symbols
 class Workspace:
     workspace_id: str
     label: str
-    folder: Path | None
+    folder: Path | None  # the hg checkout's root
     source: Path | None
+    cwd_name: str | None = None  # the pane's folder, which herdr names workspaces after
 
 
 @dataclass(frozen=True)
@@ -62,25 +63,27 @@ def share_marks(workspaces: Sequence[Workspace], middle: str, last: str) -> dict
     return marks
 
 
-def renames(workspaces: Sequence[Workspace], symbols: Symbols) -> list[Rename]:
+def renames(workspaces: Sequence[Workspace], symbols: Symbols,
+            set_by_argus: Mapping[str, str]) -> list[Rename]:
+    # Once renamed, herdr no longer names a workspace after its folder, so argus keeps doing
+    # that for the workspaces it renamed; set_by_argus is the label it last gave each.
     marks = share_marks(workspaces, symbols.tree_middle, symbols.tree_last)
     # labels with the default marks stay argus's after someone configures other symbols
     known_marks = {symbols.tree_middle, symbols.tree_last, Symbols.tree_middle, Symbols.tree_last}
     result: list[Rename] = []
     for workspace in workspaces:
-        if workspace.folder is None or workspace.source is None:
-            # no longer a share (or no folder found): a mark left from before would break the tree
-            mark, _, rest = workspace.label.partition(" ")
-            if mark in known_marks and rest:
-                result.append(Rename(workspace.workspace_id, rest))
+        name = workspace.folder.name if workspace.folder else workspace.cwd_name
+        if name is None:
             continue
-        name = workspace.folder.name
-        if workspace.label not in {name} | {f"{mark} {name}" for mark in known_marks}:
-            continue  # a name the user chose
         mark = marks[workspace.workspace_id]
         wanted = f"{mark} {name}" if mark else name
-        if workspace.label != wanted:
+        if workspace.label == wanted:
+            continue
+        first, _, rest = workspace.label.partition(" ")
+        if ((first in known_marks and rest) or workspace.label == name
+                or workspace.label == set_by_argus.get(workspace.workspace_id)):
             result.append(Rename(workspace.workspace_id, wanted))
+        # otherwise a name the user chose
     return result
 
 

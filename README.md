@@ -96,8 +96,8 @@ argus's after you change them. Problems with the file show up in `herdr plugin l
 ## When it updates
 
 When herdr starts, when a workspace opens, closes or gets focus, and when an agent in a workspace
-finishes or waits for input. A commit you make by hand shows up the next time you switch to the
-workspace.
+finishes or waits for input. A commit you make by hand, or a `cd` into another folder, shows up
+the next time you switch to the workspace.
 
 ## Grouping
 
@@ -106,6 +106,10 @@ A workspace belongs to an hg share when the pane of its active tab is inside one
 workspace directly below it (shares sorted by folder name) and names it `├ <folder>`, or
 `└ <folder>` for the last one; otherwise the share keeps its place and its plain folder name.
 Workspaces that aren't shares never move, and a share you renamed yourself keeps your name.
+
+Once a workspace has been renamed, herdr no longer names it after its folder, so argus takes that
+over for the workspaces it renamed: change folder in one and it gets the new folder's name (with
+its mark, if it's still a share) the next time you switch to it.
 
 ## What it doesn't do
 

@@ -32,7 +32,7 @@ class EntryPoint(unittest.TestCase):
                     mock.patch("argus.__main__.refresh") as refresh:
                 self.assertEqual(main(), 0)
             refresh.assert_not_called()
-            self.assertEqual(holder.take_queued(), Work(False, False, frozenset({"w7"})))
+            self.assertEqual(holder.take_queued(), Work(True, False, frozenset({"w7"})))
 
     def test_an_event_needing_no_work_touches_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as state:
@@ -72,7 +72,7 @@ class EntryPoint(unittest.TestCase):
                                       side_effect=holder_releases_after_first_try):
                 self.assertEqual(main(), 0)
             self.assertEqual([c.args[1] for c in refresh.call_args_list],
-                             [Work(False, False, frozenset({"w7"}))])
+                             [Work(True, False, frozenset({"w7"}))])
 
     def test_queued_work_runs_before_the_lock_is_released(self) -> None:
         with tempfile.TemporaryDirectory() as state:
@@ -84,7 +84,7 @@ class EntryPoint(unittest.TestCase):
                     mock.patch("argus.__main__.refresh") as refresh:
                 self.assertEqual(main(), 0)
             self.assertEqual([c.args[1] for c in refresh.call_args_list],
-                             [Work(False, False, frozenset({"w7"})),
+                             [Work(True, False, frozenset({"w7"})),
                               Work(True, False, frozenset())])
             after = RefreshLock(Path(state))
             self.assertTrue(after.try_acquire())

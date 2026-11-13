@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import tempfile
 import unittest
 from collections.abc import Mapping
 from contextlib import redirect_stderr
@@ -39,9 +40,9 @@ class Events(unittest.TestCase):
         self.assertEqual(work_for_event("workspace.closed", {}, CONTEXT),
                          Work(regroup=True, status_of_all=False, status_of=frozenset()))
 
-    def test_focus_refreshes_that_workspace(self) -> None:
+    def test_focus_regroups_and_refreshes_that_workspace(self) -> None:
         self.assertEqual(work_for_event("workspace.focused", {}, CONTEXT),
-                         Work(regroup=False, status_of_all=False, status_of=frozenset({"w7"})))
+                         Work(regroup=True, status_of_all=False, status_of=frozenset({"w7"})))
 
     def test_agent_settling_refreshes_its_workspace(self) -> None:
         for status in ("idle", "done", "blocked"):
@@ -54,7 +55,7 @@ class Events(unittest.TestCase):
 
     def test_unknown_events_and_missing_ids_do_nothing(self) -> None:
         self.assertEqual(work_for_event("workspace.renamed", {}, CONTEXT), NOTHING)
-        self.assertEqual(work_for_event("workspace.focused", {}, {}), NOTHING)
+        self.assertEqual(work_for_event("workspace.focused", {}, {}), REGROUP)
 
     def test_merged_work_covers_both(self) -> None:
         merged = Work(True, False, frozenset({"a"})).merged(Work(False, True, frozenset({"b"})))
@@ -70,13 +71,14 @@ class RecordingHerdr(Herdr):
         self.moved: list[Move] = []
         self.renamed: list[Rename] = []
         self.active_tabs: dict[str, str] = {}
+        self.labels: dict[str, str] = {}
 
     @override
     def workspaces(self) -> list[WorkspaceInfo]:
         first_pane: dict[str, Pane] = {}
         for pane in self.listed_panes:
             first_pane.setdefault(pane.workspace_id, pane)
-        return [WorkspaceInfo(p.workspace_id, p.cwd.name,
+        return [WorkspaceInfo(p.workspace_id, self.labels.get(p.workspace_id, p.cwd.name),
                               self.active_tabs.get(p.workspace_id, p.tab_id))
                 for p in first_pane.values()]
 
@@ -110,8 +112,12 @@ def one_uncommitted_file(_root: Path) -> Counts:
     return Counts(1, 0, 0)
 
 
-def refresh_with_default_symbols(herdr: Herdr, work: Work) -> None:
-    refresh(herdr, work, Symbols())
+def refresh_with_default_symbols(herdr: Herdr, work: Work, labels_file: Path | None = None) -> None:
+    if labels_file is not None:
+        refresh(herdr, work, Symbols(), labels_file)
+        return
+    with tempfile.TemporaryDirectory() as state:
+        refresh(herdr, work, Symbols(), Path(state) / "labels.json")
 
 
 class Refreshing(unittest.TestCase):
@@ -153,6 +159,23 @@ class Refreshing(unittest.TestCase):
         with mock.patch("argus.refresh.find_checkout", side_effect=fake_checkout) as lookup:
             refresh_with_default_symbols(herdr, Work(False, False, frozenset({"w2"})))
         self.assertEqual([c.args[0] for c in lookup.call_args_list], [Path("/r/b")])
+
+    def test_a_workspace_argus_renamed_keeps_following_its_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as state:
+            labels_file = Path(state) / "labels.json"
+            herdr = RecordingHerdr([Pane("w1", "w1:t1", Path("/r/myrepo"), True),
+                                    Pane("w2", "w2:t1", Path("/r/myrepo-a"), True)])
+            refresh_with_default_symbols(herdr, REGROUP, labels_file)
+            self.assertEqual(herdr.renamed, [Rename("w2", "└ myrepo-a")])
+            # the source closes, then the former share's pane goes to a plain folder
+            later = RecordingHerdr([Pane("w2", "w2:t1", Path("/r/myrepo-a"), True)])
+            later.labels = {"w2": "└ myrepo-a"}
+            refresh_with_default_symbols(later, REGROUP, labels_file)
+            self.assertEqual(later.renamed, [Rename("w2", "myrepo-a")])
+            last = RecordingHerdr([Pane("w2", "w2:t1", Path("/r/notes"), True)])
+            last.labels = {"w2": "myrepo-a"}
+            refresh_with_default_symbols(last, REGROUP, labels_file)
+            self.assertEqual(last.renamed, [Rename("w2", "notes")])
 
     def test_unexpected_errors_are_reported_and_the_rest_go_on(self) -> None:
         herdr = RecordingHerdr([Pane("explodes", "explodes:t1", Path("/r/a"), True),
